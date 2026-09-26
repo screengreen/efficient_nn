@@ -27,6 +27,7 @@ The grid is S in {32,64,128,224,256,384,512,768,1024} times B in {1,2,4,…,512}
 extra sizes {48,112,448,496} and 3 random extra batches {65,70,78} (random.seed(42)).
 A point is validation iff its S or B is one of the extras - so the model is never fitted
 on those shapes. 169 points total, 162 measured (84 train / 78 val), 7 not run.
+The required grid contains 132 configurations. Additionally, I ran stress-test points with S=768,1024 and B=512 to observe OOM behaviour.
 
 ## The equations
 
@@ -35,7 +36,7 @@ plus ReLU / maxpool / pooling terms. The factor 2 is multiply + add.
 
 bytes_moved(S, B) is a traffic estimate: for every layer, input activations + weights +
 output activations. ReLU is skipped since it is in-place. This assumes nothing stays in
-cache between layers, so it is an upper bound on real DRAM traffic.
+cache between layers. 
 
 memory(S, B) is params plus the largest (input + output) activation pair over all layers,
 i.e. a peak-footprint estimate assuming activations are freed as soon as they are consumed.
@@ -45,7 +46,7 @@ A launch floor, then compute time plus memory time.
 Note: the third slot in theta.json is stored as θ₂ and the code uses θ₂′ = 1 − θ₂,
 so the readable seconds per GB number is the seconds_per_gb field, not latency[2].
 
-energy(S, B, θ) = max(E₀, ε₁·f·(1 + ε₂·m)) - a fixed cost per launch, then joules per
+energy(S, B, θ) = max(E₀, ε₁·f·(1 + ε₂·m)) - E₀ is a fixed energy floor per launch, then joules per
 GFLOP that grow with the amount of traffic.
 
 Both are fitted in calibrate.py with least_squares on log residuals, on train points only.
@@ -88,8 +89,7 @@ right place on all four plots - but both sit around 20 % validation MAPE.
 The dominant source is a throughput cliff in the batch dimension. Median achieved throughput is
 ~2830 GFLOP/s at B=64 and 2749 at B=65, then drops to 1833 at B=70 and stays near 1870
 for 128, 256 and 512. FLOPs and bytes only grow by 9 % between B=65 and B=70, so no smooth
-function of (f, m) can produce a 1.5× jump in time - this is cuDNN switching algorithm or tile
-shape, and neither flops nor bytes_moved carries that information. It is visible in the plots
+function of (f, m) can produce a 1.5× jump in time - this is consistent with a cuDNN kernel/algorithm change or another shape-dependent efficiency change, and neither flops nor bytes_moved carries that information. It is visible in the plots
 as the measured points splitting into two parallel bands that the single predicted line runs
 between. Most of the remaining error is this.
 
